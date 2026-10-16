@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Secure State Demo</title>
+    <style>
+        :root {
+            --bg: #f5f6f8; --card: #ffffff; --text: #1d2330; --muted: #667085; --line: #d9dde5;
+            --accent: #2754c5; --accent-bg: #e8eefc; --ok: #1a7f4b; --deny: #b42318; --deny-bg: #fdecea;
+        }
+        * { box-sizing: border-box; }
+        body { margin: 0; font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+               background: var(--bg); color: var(--text); font-size: 15px; }
+        header { padding: 18px 24px; background: var(--card); border-bottom: 1px solid var(--line); }
+        header h1 { margin: 0; font-size: 20px; }
+        header p { margin: 4px 0 0; color: var(--muted); font-size: 13px; }
+        main { display: grid; grid-template-columns: minmax(300px, 420px) 1fr; gap: 16px;
+               padding: 16px 24px; max-width: 1300px; margin: 0 auto; }
+        @media (max-width: 860px) { main { grid-template-columns: 1fr; padding: 16px; } }
+        .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 16px; margin-bottom: 16px; }
+        .card h2 { margin: 0 0 12px; font-size: 15px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+        .machine { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 6px; }
+        .state { padding: 6px 10px; border: 1px solid var(--line); border-radius: 999px; font-size: 13px; color: var(--muted); }
+        .state.active { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+        .state.active.locked { background: var(--deny); border-color: var(--deny); }
+        .sub { font-size: 12px; color: var(--muted); margin: 10px 0 6px; }
+        form.inline { display: inline; }
+        .row { display: flex; gap: 8px; margin-bottom: 8px; flex-wrap: wrap; }
+        input[type=text], input[type=password], textarea {
+            flex: 1; min-width: 0; padding: 8px 10px; border: 1px solid var(--line); border-radius: 6px; font: inherit; }
+        textarea { width: 100%; min-height: 140px; font-family: ui-monospace, Consolas, monospace; font-size: 13px; }
+        button { padding: 8px 12px; border: 1px solid var(--accent); background: var(--accent); color: #fff;
+                 border-radius: 6px; font: inherit; cursor: pointer; }
+        button.secondary { background: var(--card); color: var(--accent); }
+        button.small { padding: 4px 10px; font-size: 13px; }
+        .note { font-size: 12px; color: var(--muted); margin: 8px 0 0; }
+        table { width: 100%; border-collapse: collapse; font-size: 14px; }
+        th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line); }
+        pre.doc { white-space: pre-wrap; background: var(--bg); padding: 12px; border-radius: 6px; margin: 0; }
+        .empty { color: var(--muted); font-style: italic; }
+        .log { font-family: ui-monospace, Consolas, monospace; font-size: 13px; max-height: 420px; overflow-y: auto;
+               background: #11151c; color: #d7dde8; border-radius: 6px; padding: 10px 12px; }
+        .log div { padding: 2px 0; white-space: pre-wrap; word-break: break-word; }
+        .log .deny { color: #ff8a80; font-weight: 600; }
+        .log .sec { color: #9ecbff; }
+        .log .user { color: #b5e8a5; }
+        .tag { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 12px; }
+        .tag.locked { background: var(--deny-bg); color: var(--deny); }
+        .tag.ok { background: #e6f4ec; color: var(--ok); }
+    </style>
+</head>
+<body>
+<header>
+    <h1>Secure State Pattern Demo — Login + MFA + Roles</h1>
+    <p>Every button is always visible on purpose: the server-side security state machine decides, not the UI.</p>
+</header>
+
+<main>
+    <!-- ===================== left: state machines + controls ===================== -->
+    <section>
+        <div class="card">
+            <h2>Security state machine</h2>
+            <div class="machine">
+                <span th:each="s : ${securityStates}" class="state"
+                      th:classappend="${s == securityState} ? (${s == 'Locked'} ? 'active locked' : 'active') : ''"
+                      th:text="${s}">state</span>
+            </div>
+            <div class="sub">User state machine (exists only after full authentication)</div>
+            <div class="machine">
+                <span th:each="p : ${pages}" class="state"
+                      th:classappend="${p == page} ? 'active' : ''" th:text="${p}">page</span>
+                <span th:if="${page == null}" class="empty">— no user session —</span>
+            </div>
+            <p class="note" th:if="${userName != null}">Signed in as <b th:text="${userName}">user</b></p>
+        </div>
+
+        <div class="card">
+            <h2>1. Login (password)</h2>
+            <form method="post" th:action="@{/login}">
+                <div class="row">
+                    <input type="text" name="username" placeholder="username" autocomplete="username">
+                    <input type="password" name="password" placeholder="password" autocomplete="current-password">
+                </div>
+                <button type="submit">Login</button>
+            </form>
+
+            <h2 style="margin-top:16px">2. Verify MFA code</h2>
+            <form method="post" th:action="@{/mfa}">
+                <div class="row">
+                    <input type="text" name="code" placeholder="6-digit code" inputmode="numeric" autocomplete="one-time-code">
+                    <button type="submit">Verify</button>
+                </div>
+            </form>
+
+            <div class="row" style="margin-top:8px">
+                <form class="inline" method="post" th:action="@{/logout}">
+                    <button type="submit" class="secondary">Logout / Cancel</button>
+                </form>
+                <form class="inline" method="post" th:action="@{/session/new}">
+                    <button type="submit" class="secondary">Start new session</button>
+                </form>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2>3. Pages (user-level functions)</h2>
+            <div class="row">
+                <form class="inline" method="post" th:action="@{/page/viewing}"><button type="submit">Viewing</button></form>
+                <form class="inline" method="post" th:action="@{/page/editing}"><button type="submit">Editing</button></form>
+                <form class="inline" method="post" th:action="@{/page/managing-users}"><button type="submit">Managing Users</button></form>
+            </div>
+            <p class="note">Viewing / Editing: any logged-in user (op1). Managing Users: Admin only (op2).</p>
+        </div>
+
+        <div class="card">
+            <h2>Demo accounts</h2>
+            <table>
+                <tr><th>User</th><th>Password</th><th>MFA</th><th>Role</th></tr>
+                <tr><td>alice</td><td>alice123</td><td>111111</td><td>Admin</td></tr>
+                <tr><td>dave</td><td>dave123</td><td>444444</td><td>Admin</td></tr>
+                <tr><td>bob</td><td>bob123</td><td>222222</td><td>Clerk</td></tr>
+                <tr><td>carol</td><td>carol123</td><td>333333</td><td>Clerk</td></tr>
+            </table>
+            <p class="note">2 failed password/MFA attempts lock the account. Only an admin can unlock it.</p>
+        </div>
+    </section>
+
+    <!-- ===================== right: current page + event log ===================== -->
+    <section>
+        <div class="card">
+            <h2 th:text="${page != null} ? ('Page: ' + ${page}) : 'Page'">Page</h2>
+
+            <p th:if="${page == null}" class="empty">Log in and verify MFA to open a page.</p>
+
+            <div th:if="${page == 'Viewing'}">
+                <pre class="doc" th:text="${documentText}">document</pre>
+            </div>
+
+            <form th:if="${page == 'Editing'}" method="post" th:action="@{/document}">
+                <textarea name="text" th:text="${documentText}">document</textarea>
+                <div class="row" style="margin-top:8px"><button type="submit">Save document</button></div>
+            </form>
+
+            <div th:if="${page == 'Managing Users'}">
+                <table>
+                    <tr><th>User</th><th>Role</th><th>Failed</th><th>Status</th><th></th></tr>
+                    <tr th:each="a : ${accounts}">
+                        <td th:text="${a.name}">name</td>
+                        <td th:text="${a.role}">role</td>
+                        <td th:text="${a.failedAttempts}">0</td>
+                        <td>
+                            <span th:if="${a.locked}" class="tag locked">Locked</span>
+                            <span th:unless="${a.locked}" class="tag ok">Active</span>
+                        </td>
+                        <td>
+                            <form th:if="${a.locked}" class="inline" method="post" th:action="@{/users/unlock}">
+                                <input type="hidden" name="username" th:value="${a.name}">
+                                <button type="submit" class="small">Unlock</button>
+                            </form>
+                        </td>
+                    </tr>
+                </table>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2>Event log (newest first)</h2>
+            <div class="log">
+                <div th:each="line : ${log}" th:text="${line}"
+                     th:classappend="${#strings.contains(line, 'DENIED')} ? 'deny' :
+                                     (${#strings.startsWith(line, '[SEC]')} ? 'sec' :
+                                     (${#strings.startsWith(line, '[User]')} ? 'user' : ''))">line</div>
+            </div>
+        </div>
+    </section>
+</main>
+</body>
+</html>
